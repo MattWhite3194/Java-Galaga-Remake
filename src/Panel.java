@@ -12,11 +12,15 @@ import java.awt.event.KeyListener;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.BufferedInputStream;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Random;
+import java.util.Scanner;
+
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
@@ -27,6 +31,7 @@ public class Panel extends JPanel implements Runnable {
 	private static final long serialVersionUID = 1L;
 	int starsX[] = new int [50];
 	int starsY[] = new int[50];
+	Color starColors[] = new Color[50];
 	ArrayList<Enemy> enemies = new ArrayList<>();
 	ArrayList<Bullet> bullets = new ArrayList<>();
 	ArrayList<Bullet> enemyBullets = new ArrayList<>();
@@ -49,6 +54,10 @@ public class Panel extends JPanel implements Runnable {
 	int enemyRows = 0;
 	BufferedImage playerSprite;
 	int score = 0;
+	int highScores[];
+	String highScore = "000000";
+	String highScoreNames[];
+	int numScoresStored;
 	//enemy grid
 	int topRowWidth = (52)*7 + 140, RowWidth, unitSize = 70, displace;
 	public static final int UPDATE_SPEED= 50;
@@ -66,11 +75,13 @@ public class Panel extends JPanel implements Runnable {
 		this.requestFocus();
 		this.addKeyListener(new GameKeyListener());
 		
+		//array of random star coordinates
 		int n;
-		for (int i = 0; i < 50; i++) { //array of random star coordinates
+		for (int i = 0; i < 50; i++) { 
 			n = random.nextInt(1000);
-			starsX[i] = n;						//X Coordinates
-			starsY[i] = random.nextInt(1350);	//Y Coordinates
+			starsX[i] = n;					
+			starsY[i] = random.nextInt(1350);
+			starColors[i] = new Color(random.nextInt(150, 255), random.nextInt(150, 255), random.nextInt(150, 255)); 
 		}
 		
 		//player starting position
@@ -80,7 +91,8 @@ public class Panel extends JPanel implements Runnable {
 		lt = new LevelTimer(2000);
 		shootTimer = new ShootTimer(400);
 		playerSprite = tl.playerSprite;
-
+		
+		getHighScores("/Scores/HighScores.txt");
 		loadFont("res/Font/RetroFont.ttf");
 		//g2d.setFont(retroFont);
 		Thread th = new Thread(this);
@@ -111,19 +123,20 @@ public class Panel extends JPanel implements Runnable {
 		for (int i = 0; i < player.health; i++) {
 			g.drawImage(tl.playerSprite, i*64 + i*10, 1350-70, 60, 64, null);
 		}
-		
-		//draw stars
-		g.setColor(Color.white);
-		g.drawString(String.format("%06d", score), 20, 35);
+
+		//draw background stars
 		for (int i = 0; i < starsX.length; i++) {
-			if (i != rand && i != rand + 10)
+			if (i != rand && i != rand + 10) {
+				g.setColor(starColors[i]);
 				g.fillRect(starsX[i], starsY[i], 5, 5);
+			}
 			starsY[i] += 5;
 			if (starsY[i] > 1350)
 				starsY[i] = 0;
 		}
 		//draw player
 		g.drawImage(playerSprite, player.posX - playerSprite.getWidth() + 5, player.posY - playerSprite.getHeight() + 5, playerSprite.getWidth()*2, playerSprite.getHeight()*2, null);
+
 		//draw bullets
 		for (int i = 0; i < bullets.size(); i++) {
 			g.drawImage(tl.BulletSprite, bullets.get(i).posX, bullets.get(i).posY, 12, 32, null);
@@ -138,6 +151,16 @@ public class Panel extends JPanel implements Runnable {
 			g.setTransform(enemy);	//sets enemies rotation
 			g.drawImage(enemies.get(i).returnSprite, enemies.get(i).posX - enemies.get(i).returnSprite.getWidth(), enemies.get(i).posY - enemies.get(i).returnSprite.getHeight(), enemies.get(i).returnSprite.getWidth()*2, enemies.get(i).returnSprite.getHeight()*2, null);
 		}
+
+		//draw text
+		g.setColor(Color.red);
+		g.drawString("1UP", 20, 35);
+		g.drawString("High Score", 500, 35);
+		g.setColor(Color.white);
+		g.drawString(String.format("%06d", score), 20, 75);
+		g.drawString(highScore, 500, 75);
+
+
 		g.dispose();
 	}
 	
@@ -147,6 +170,7 @@ public class Panel extends JPanel implements Runnable {
 		if (player.playerDown) {
 			moving = false;
 			if (player.health <= 0) {
+				recordScores("/Scores/HighScores.txt");
 				gameRunning = false;
 			}
 		}
@@ -229,7 +253,7 @@ public class Panel extends JPanel implements Runnable {
 		for (int i = 0; i < bullets.size(); i++) {
 			for (int j = 0; j < enemies.size(); j++) {
 				if (!enemies.get(j).explosion && Math.sqrt(Math.pow((double)(bullets.get(i).posY + 16) - (double)(enemies.get(j).posY), 2) + Math.pow((double)(bullets.get(i).posX + 6) - (double)(enemies.get(j).posX), 2)) < 2 + 26) {
-					enemies.get(j).explosion = true;
+					enemies.get(j).hit();
 					bullets.remove(i);
 					score += 50;
 					break;
@@ -248,9 +272,9 @@ public class Panel extends JPanel implements Runnable {
 		}
 	}
 
-	private void loadFont(String font_path) {
+	private void loadFont(String filePath) {
 		try {
-			InputStream fontFile = new BufferedInputStream(new FileInputStream(font_path));
+			InputStream fontFile = new BufferedInputStream(new FileInputStream(filePath));
 			retroFont = Font.createFont(Font.TRUETYPE_FONT, fontFile);
 			GraphicsEnvironment gEnvironment = GraphicsEnvironment.getLocalGraphicsEnvironment();
 			gEnvironment.registerFont(retroFont);
@@ -258,6 +282,33 @@ public class Panel extends JPanel implements Runnable {
 		} catch (FontFormatException | IOException e) {
 			e.printStackTrace();
 		}
+	}
+
+	private void getHighScores(String filePath) throws FileNotFoundException {
+		File scoresFile = new File(filePath);
+		if (!scoresFile.exists())
+			return;
+		Scanner scanner = new Scanner(scoresFile);
+		if (scanner.hasNextInt())
+			numScoresStored = scanner.nextInt();
+		else {
+			scanner.close();
+			return;
+		}
+		highScores = new int[numScoresStored];
+		highScoreNames = new String[numScoresStored];
+		for (int i = 0; i < numScoresStored; i++) {
+			if (scanner.hasNext())
+				highScoreNames[i] = scanner.next();
+			if (scanner.hasNextInt())
+				highScores[i] = scanner.nextInt();
+		}
+		highScore = String.format("%06d", highScores[0]);
+		scanner.close();
+	}
+
+	private void recordScores(String filePath) {
+		
 	}
 	
 	public class GameKeyListener implements KeyListener {

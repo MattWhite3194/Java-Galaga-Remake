@@ -254,4 +254,10 @@ public class Enemy {
 	public void setRestY (int y) {
 		restY = y;
 	}
+	public void hit() {
+
+		//TODO: add functionality to special enemy types when they are hit by bullet.
+		if (type < 2)
+			explosion = true;
+	}
 }
