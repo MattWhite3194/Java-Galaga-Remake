@@ -1,14 +1,20 @@
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.FontFormatException;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.io.BufferedInputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Random;
 import javax.swing.JPanel;
@@ -31,11 +37,10 @@ public class Panel extends JPanel implements Runnable {
 	LevelTimer lt;
 	Random random = new Random();
 	AffineTransform enemy;
-	Graphics2D g2d;
 	int level = 0;
 	int rand, attackRand;
 	double enemyAngleToCenter;
-	int attackCt, attackDelay, playerWait;
+	int attackCt, attackDelay = 10, playerWait;
 	boolean enemiesLoaded = false;
 	boolean canUpdate = true;
 	boolean timerRunning = false;
@@ -43,11 +48,13 @@ public class Panel extends JPanel implements Runnable {
 	boolean firstRow = true;
 	int enemyRows = 0;
 	BufferedImage playerSprite;
+	int score = 0;
 	//enemy grid
-	int topRowWidth, RowWidth, unitSize, displace;
+	int topRowWidth = (52)*7 + 140, RowWidth, unitSize = 70, displace;
 	public static final int UPDATE_SPEED= 50;
 	boolean moving = false, gameRunning = true, canShoot = true, shooting = false;
 	char direction = 'd';
+	Font retroFont;
 	
 	
 	//comments are so I don't forget anything, I'm typing this as I've forgotten everything
@@ -66,9 +73,6 @@ public class Panel extends JPanel implements Runnable {
 			starsY[i] = random.nextInt(1350);	//Y Coordinates
 		}
 		
-		//temporary attack delay, update between levels
-		attackDelay = 10;
-		
 		//player starting position
 		player.posX = 500;
 		player.posY = 1200;
@@ -76,8 +80,9 @@ public class Panel extends JPanel implements Runnable {
 		lt = new LevelTimer(2000);
 		shootTimer = new ShootTimer(400);
 		playerSprite = tl.playerSprite;
-		topRowWidth = (52)*7 + 140;
-		unitSize = 70;
+
+		loadFont("res/Font/RetroFont.ttf");
+		//g2d.setFont(retroFont);
 		Thread th = new Thread(this);
 		th.start();
 	}
@@ -86,14 +91,6 @@ public class Panel extends JPanel implements Runnable {
 	public void run(){
 		while (gameRunning) {	//while loop, run is only called once
 			update();
-			try {
-				checkLevel();
-			} catch (IOException e1) {
-				e1.printStackTrace();
-			}
-			if (!enemies.isEmpty() && !bullets.isEmpty()) {
-				checkBulletCollision();
-			}
 			repaint();
 			try {
 				Thread.sleep(10);
@@ -103,13 +100,13 @@ public class Panel extends JPanel implements Runnable {
 		}
 		System.exit(0);
 	}
-	
-	public void paint(Graphics g) {
+	@Override
+	protected void paintComponent(Graphics g) {
 		super.paintComponent(g);
 		draw((Graphics2D) g);
 	}
 	public void draw(Graphics2D g) {
-	
+		g.setFont(retroFont);
 		//draw player health+
 		for (int i = 0; i < player.health; i++) {
 			g.drawImage(tl.playerSprite, i*64 + i*10, 1350-70, 60, 64, null);
@@ -117,6 +114,7 @@ public class Panel extends JPanel implements Runnable {
 		
 		//draw stars
 		g.setColor(Color.white);
+		g.drawString(String.format("%06d", score), 20, 35);
 		for (int i = 0; i < starsX.length; i++) {
 			if (i != rand && i != rand + 10)
 				g.fillRect(starsX[i], starsY[i], 5, 5);
@@ -136,7 +134,7 @@ public class Panel extends JPanel implements Runnable {
 		
 		//draw enemies
 		for (int i = 0; i < enemies.size(); i++) {
-			enemy = AffineTransform.getRotateInstance(enemies.get(i).a, enemies.get(i).posX + 5, enemies.get(i).posY + 5);
+			enemy = AffineTransform.getRotateInstance(enemies.get(i).a, enemies.get(i).posX, enemies.get(i).posY);
 			g.setTransform(enemy);	//sets enemies rotation
 			g.drawImage(enemies.get(i).returnSprite, enemies.get(i).posX - enemies.get(i).returnSprite.getWidth(), enemies.get(i).posY - enemies.get(i).returnSprite.getHeight(), enemies.get(i).returnSprite.getWidth()*2, enemies.get(i).returnSprite.getHeight()*2, null);
 		}
@@ -194,6 +192,14 @@ public class Panel extends JPanel implements Runnable {
 				i--;
 			}
 		}
+		try {
+			checkLevel();
+		} catch (IOException e1) {
+			e1.printStackTrace();
+		}
+		if (!enemies.isEmpty() && !bullets.isEmpty()) {
+			checkBulletCollision();
+		}
 	}
 
 	public void shoot(int posX, int posY) {
@@ -201,7 +207,7 @@ public class Panel extends JPanel implements Runnable {
 	}
 	
 	public void checkLevel() throws IOException {
-		if (enemies.isEmpty() && canUpdate == true) {
+		if (enemies.isEmpty() && canUpdate) {
 			enemiesLoaded = false;
 			level += 1;
 			enemyRows = level*2;
@@ -225,6 +231,7 @@ public class Panel extends JPanel implements Runnable {
 				if (!enemies.get(j).explosion && Math.sqrt(Math.pow((double)(bullets.get(i).posY + 16) - (double)(enemies.get(j).posY), 2) + Math.pow((double)(bullets.get(i).posX + 6) - (double)(enemies.get(j).posX), 2)) < 2 + 26) {
 					enemies.get(j).explosion = true;
 					bullets.remove(i);
+					score += 50;
 					break;
 				}
 			}
@@ -238,6 +245,18 @@ public class Panel extends JPanel implements Runnable {
 			enemies.get(attackRand).atHome = false;
 			enemies.get(attackRand).tempX = enemies.get(attackRand).restX + enemies.get(attackRand).attack1X[0];
 			enemies.get(attackRand).tempY = enemies.get(attackRand).restY + enemies.get(attackRand).attack1Y[0];
+		}
+	}
+
+	private void loadFont(String font_path) {
+		try {
+			InputStream fontFile = new BufferedInputStream(new FileInputStream(font_path));
+			retroFont = Font.createFont(Font.TRUETYPE_FONT, fontFile);
+			GraphicsEnvironment gEnvironment = GraphicsEnvironment.getLocalGraphicsEnvironment();
+			gEnvironment.registerFont(retroFont);
+			retroFont = retroFont.deriveFont(40.0f);
+		} catch (FontFormatException | IOException e) {
+			e.printStackTrace();
 		}
 	}
 	
